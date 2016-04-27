@@ -12,55 +12,71 @@ class Network(object):
 
     def gradient_descent(self, training_data, epochs, mini_batch_size, learning_rate, test_data):
         ##training data is a list of tuples which contains (x,y) -> x being input data, y being expected output
-        n = len(training_data)  ##number of training inputs
-        for j in xrange(epochs):  ## loop over training set
-            random.shuffle(training_data)  ## shuffle the training data so that we get new inputs every loop
-            mini_batches = []
-            for k in xrange(0, n, mini_batch_size):
-                mini_batches.append(training_data[k:k + mini_batch_size])  ## take a slice of the training_data
-
+        if test_data: n_test = len(test_data)
+        n = len(training_data)
+        for j in xrange(epochs):
+            random.shuffle(training_data)
+            mini_batches = [training_data[k:k+mini_batch_size] for k in xrange(0, n, mini_batch_size)]
             for mini_batch in mini_batches:
-                ##here we have to find the shifts for our weights / bias vectors
-                ##we will use the back propagation algorithm to do quick gradient calculations
-                bias_prime = [np.zeros(b.shape) for b in self.biases]  ## init to a "matrix" of zeroes
-                weights_prime = [np.zeros(w.shape) for w in self.weights]
-                for x, y in mini_batch:  ## x input data, y expected output
-                    bias_deltas = [np.zeros(b.shape) for b in self.biases]
-                    weight_deltas = [np.zeros(w.shape) for w in self.weights]
+                self.update_mini_batch(mini_batch, learning_rate)
+            if test_data:
+                print "Epoch {0}: {1} / {2}".format(
+                        j, self.evaluate(test_data), n_test)
+            else:
+                print "Epoch {0} complete".format(j)
 
-                    activation = x
-                    activations = [x]  # list to store all the activations, layer by layer
-                    zs = []  # list to store all the z vectors, layer by layer - z being the value of <activation>.<weights>
-                    ## forward pass to calculate the output of the hidden layer.
-                    for b, w in zip(self.biases, self.weights):
-                        z = np.dot(w, activation)
-                        zs.append(z)
-                        activation = sigmoid(z)
-                        activations.append(activation)
+    def update_mini_batch(self, mini_batch, learning_rate):
+        bias_gradient = [np.zeros(b.shape) for b in self.biases]
+        weight_gradient = [np.zeros(w.shape) for w in self.weights]
+        for x, y in mini_batch:
+            delta_bias_gradient, delta_weight_gradient = self.backprop(x, y)
+            bias_gradient = [nb+dnb for nb, dnb in zip(bias_gradient, delta_bias_gradient)]
+            weight_gradient = [nw+dnw for nw, dnw in zip(weight_gradient, delta_weight_gradient)]
+        ## wk -> wk` = wk - n/m * gradient_w
+        self.weights = [w-(learning_rate/len(mini_batch))*nw for w, nw in zip(self.weights, weight_gradient)]
+        self.biases = [b-(learning_rate/len(mini_batch))*nb for b, nb in zip(self.biases, bias_gradient)]
 
-                    ##compute delta_w for all weights from hidden layer to output layer
-                    error_vector = y - activations[-1]  ##the output of the network is final activations
-                    delta = error_vector * sigmoid_prime(zs[-1])
-                    bias_deltas[-1] = delta
-                    weight_deltas[-1] = np.dot(delta, x.transpose())
 
-                    ##in -> hid -> out
-                    ##compute delta_w for all weights from input layer to hidden layer (only 3 layers, so will only loop once)
-                    for l in xrange(2, self.num_layers):
-                        z = zs[-l]
-                        sp = sigmoid_prime(z)
-                        delta = np.dot(self.weights[-l + 1].transpose(), delta) * sp
-                        bias_deltas[-l] = delta
-                        weight_deltas[-l] = np.dot(delta, activations[-l - 1].transpose())
+    def backprop(self, x, y):
+        gradient_wrt_bias = [np.zeros(b.shape) for b in self.biases]
+        gradient_wrt_weight = [np.zeros(w.shape) for w in self.weights]
+        # feedforward
+        activation = x
+        activations = [x] # list to store all the activations, layer by layer
+        zs = [] # list to store all the z vectors, layer by layer
+        for b, w in zip(self.biases, self.weights):
+            z = np.dot(w, activation)+b
+            zs.append(z)
+            activation = sigmoid(z)
+            activations.append(activation)
+        # backward pass
+        delta = self.cost_derivative(activations[-1], y) * \
+                sigmoid_prime(zs[-1])
+        gradient_wrt_bias[-1] = delta
+        gradient_wrt_weight[-1] = np.dot(delta, activations[-2].transpose())
+        # Note that the variable l in the loop below is used a little
+        # differently to the notation in Chapter 2 of the book.  Here,
+        # l = 1 means the last layer of neurons, l = 2 is the
+        # second-last layer, and so on.  It's a renumbering of the
+        # scheme in the book, used here to take advantage of the fact
+        # that Python can use negative indices in lists.
+        for l in xrange(2, self.num_layers):
+            z = zs[-l]
+            sp = sigmoid_prime(z)
+            delta = np.dot(self.weights[-l+1].transpose(), delta) * sp
+            gradient_wrt_bias[-l] = delta
+            gradient_wrt_weight[-l] = np.dot(delta, activations[-l-1].transpose())
+        return gradient_wrt_bias, gradient_wrt_weight
 
-                    bias_prime = [nb + dnb for nb, dnb in zip(bias_prime, bias_deltas)]
-                    weights_prime = [nw + dnw for nw, dnw in zip(weights_prime, weight_deltas)]
 
-                self.weights = [w - (learning_rate / len(mini_batch)) * nw
-                                for w, nw in zip(self.weights, weights_prime)]
-                self.biases = [b - (learning_rate / len(mini_batch)) * nb
-                               for b, nb in zip(self.biases, bias_prime)]
-
+    def evaluate(self, test_data):
+        """Return the number of test inputs for which the neural
+        network outputs the correct result. Note that the neural
+        network's output is assumed to be the index of whichever
+        neuron in the final layer has the highest activation."""
+        test_results = [(np.argmax(self.feedforward(x)), y)
+                        for (x, y) in test_data]
+        return sum(int(x == y) for (x, y) in test_results)
 
 
 
