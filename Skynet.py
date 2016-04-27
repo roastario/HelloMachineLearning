@@ -53,6 +53,16 @@ class Network(object):
                         bias_deltas[-l] = delta
                         weight_deltas[-l] = np.dot(delta, activations[-l - 1].transpose())
 
+                    bias_prime = [nb + dnb for nb, dnb in zip(bias_prime, bias_deltas)]
+                    weights_prime = [nw + dnw for nw, dnw in zip(weights_prime, weight_deltas)]
+
+                self.weights = [w - (learning_rate / len(mini_batch)) * nw
+                                for w, nw in zip(self.weights, weights_prime)]
+                self.biases = [b - (learning_rate / len(mini_batch)) * nb
+                               for b, nb in zip(self.biases, bias_prime)]
+
+
+
 
 
     def feedforward(self, a):
